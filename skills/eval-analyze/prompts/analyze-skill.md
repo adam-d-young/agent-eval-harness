@@ -33,7 +33,7 @@ inputs:
 stdout_only: <true if the skill produces no file artifacts and its entire output
               is conversational text; false otherwise. Set true when the skill
               writes nothing to disk and judges must use {{ conversation }} to
-              see any output at all — {{ outputs }} will be empty for these skills.>
+              see any output — bare {{ outputs }} will render empty for these skills.>
 
 outputs:
   # File artifacts written to disk — field names match eval.yaml
