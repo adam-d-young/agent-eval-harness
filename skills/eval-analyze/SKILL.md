@@ -5,10 +5,10 @@ user-invocable: true
 allowed-tools: Read, Write, Edit, Bash, Glob, Grep, Agent, AskUserQuestion
 ---
 
-You generate `eval.yaml` — the configuration that `/eval-run` needs. You either:
+You generate `eval.yaml` — the configuration `/eval-run` needs. You either:
 
 1. **Analyze a skill** (default): Read the skill deeply (including sub-skills), explore test cases, generate config for testing the skill
-2. **Custom analysis** (`--prompt`): Execute a custom analysis prompt that defines what to evaluate and how
+2. **Custom analysis** (`--prompt`): Execute a custom analysis prompt defining what to evaluate and how
 
 The core principle: **observe, don't assume**. Every field name, file pattern, and directory path in the generated eval.yaml must come from reading actual files. If you can't point to a specific file or field you observed, don't put it in the config.
 
@@ -79,7 +79,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/find_skills.py --name <skill>
 python3 ${CLAUDE_SKILL_DIR}/scripts/find_skills.py
 ```
 
-This reads `.claude-plugin/plugin.json` for custom skill paths, falls back to `.claude/skills/` and `skills/`, and excludes eval harness skills. If only one skill is found, use it automatically. If none are found, tell the user — they may need to check their skill directory paths or create a skill first.
+This reads `.claude-plugin/plugin.json` for custom skill paths, falls back to `.claude/skills/` and `skills/`, and excludes eval harness skills. If only one skill is found, use it automatically. If none are found, tell the user — they may need to check skill directory paths or create a skill.
 
 If multiple skills are found, list them and ask the user which one to analyze via AskUserQuestion. For batch assessment, use `--assess` explicitly.
 
@@ -105,7 +105,7 @@ Then check if eval.md (the cached analysis) is still fresh — meaning the SKILL
 python3 ${CLAUDE_SKILL_DIR}/scripts/validate_eval.py memory <eval_md_path>
 ```
 
-If FRESH and eval.yaml has a non-empty `dataset.schema`, at least one `outputs` entry with a schema, at least one judge, and `models.skill` set, report that config is up to date and exit. No work needed. (An INCOMPLETE config — empty sections, or missing `models.skill` from a pre-restructure eval.yaml — still needs analysis.)
+If FRESH and eval.yaml has a non-empty `dataset.schema`, at least one `outputs` entry with a schema, at least one judge, and `models.skill` set, report config is up to date and exit. No work needed. (An INCOMPLETE config — empty sections, or missing `models.skill` from a pre-restructure eval.yaml — still needs analysis.)
 
 If STALE, NO_CONFIG, or `--update` was set, proceed to full analysis.
 
@@ -123,7 +123,7 @@ The analysis is **recursive** — the agent follows sub-skill chains (Skill tool
 
 The agent returns structured YAML with: purpose, inputs, outputs, sub_skills, flags, pipeline, quality_criteria, and suggested_judges. See `${CLAUDE_SKILL_DIR}/prompts/analyze-skill.md` for the full schema.
 
-**Verify the response**: check that outputs reference actual directories and file patterns (not placeholders like `<output-dir>`), that sub_skills lists real skill names, and that suggested_judges include working code snippets. If anything looks fabricated, ask the agent to re-examine specific files.
+**Verify the response**: check outputs reference actual directories and file patterns (not placeholders like `<output-dir>`), sub_skills lists real skill names, and suggested_judges include working code snippets. If anything looks fabricated, ask the agent to re-examine specific files.
 
 ## Step 5: Explore the Dataset
 
@@ -157,7 +157,7 @@ If no test cases exist, note this clearly and suggest running `/eval-dataset` to
 
 Combine the skill analysis (Step 4) and dataset exploration (Step 5) into a complete eval.yaml. **Read `${CLAUDE_SKILL_DIR}/references/eval-yaml-template.md` for the full field reference** — it documents every field, the workspace_mode decision guide, permissions/deny rules, the `[EXTERNAL: System]` convention, `inputs.tools`, and the reward schema in depth. The eval-analyze-specific decisions to get right:
 
-- **Execution mode / arguments**: use `execution.mode` from Step 4 (if it returned `ASK_USER`, ask the user — don't default to `case`; a skill that processes collections internally is `batch`). For `case` mode, build `execution.arguments` with `{field}` placeholders matching observed input.yaml fields; for `batch`, the literal string (e.g. `"--input batch.yaml --headless"`).
+- **Execution mode / arguments**: use `execution.mode` from Step 4 (if it returned `ASK_USER`, ask the user — don't default to `case`; a skill processing collections internally is `batch`). For `case` mode, build `execution.arguments` with `{field}` placeholders matching observed input.yaml fields; for `batch`, the literal string (e.g. `"--input batch.yaml --headless"`).
 - **workspace_mode**: omit for skill evals (isolated /tmp). Set `repo` only when the agent must navigate the real tree (doc navigation, code exploration) — and then add `permissions.deny` for `eval/`, `eval.yaml`, `eval.md`, `tmp/` to prevent test-cheating. Deny rules are prompt-mode only.
 - **Models**: `models.skill` and `models.judge` → `claude-opus-4-6`; `models.hook` → `claude-sonnet-4-6` if the skill uses AskUserQuestion interactively. CLI flags override.
 - **Schemas**: `dataset.schema` and `outputs[*].schema` drive the whole pipeline — be specific, use the real file/field names you observed. Mark inputs that reference external systems with `[EXTERNAL: System]` so `/eval-dataset` won't fabricate them.
@@ -165,13 +165,13 @@ Combine the skill analysis (Step 4) and dataset exploration (Step 5) into a comp
 - **Tool interception**: if the skill uses AskUserQuestion or calls external services (MCP tools/scripts), add `inputs.tools` entries (`match` = natural-language description, `prompt` = how to handle). AskUserQuestion answering uses `models.hook` + per-case `answers.yaml`.
 - **Stdout-only skills** (`stdout_only: true`): bare `{{ outputs }}` renders empty — see `references/judge-prompt-template.md`.
 - **Judges**: work down the selection ladder — builtin (discover: `python3 ${CLAUDE_SKILL_DIR}/scripts/list_builtins.py`; parameterize via `arguments:`) → inline `check` → boolean LLM `prompt` → numeric LLM `prompt` — one failure mode per judge. Aim for 1-2 builtin + 2-3 `check` + 1-2 LLM; start lean. LLM prompts follow `references/judge-prompt-template.md`. Judges receive `outputs["annotations"]` for outcome-aware scoring.
-- **Reward (optional)**: if the analyzer suggested one and there are multiple judges, add a `reward:` section so the report and Harbor's `reward.json` match your intent — otherwise a default resolution applies that can silently disagree. Schema in the template.
+- **Reward (optional)**: if analyzer suggested one and there are multiple judges, add a `reward:` section so the report and Harbor's `reward.json` match your intent — otherwise a default resolution applies that can silently disagree. Schema in the template.
 - **Portability**: keep `dataset.path` / `outputs[*].path` project-relative (absolute paths break under Harbor / EvalHub).
-- **`--update`**: preserve the existing file; only add missing top-level keys. Check LLM judge prompts for literal `{{ }}` that isn't a template variable.
+- **`--update`**: preserve the existing file; only add missing top-level keys. Check LLM judge prompts for literal `{{ }}` not matching a template variable.
 
 ## Step 6b: Validate Generated Config
 
-After writing eval.yaml to the resolved `<config>` path, validate that all references are correct:
+After writing eval.yaml to the resolved `<config>` path, validate all references are correct:
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/validate_eval.py config <config>
@@ -181,11 +181,11 @@ This checks dataset path exists (resolved relative to the config file's director
 
 **Errors** (exit code 1): fix before proceeding — broken file references, absolute paths, missing modules.
 
-**Warnings** (exit code 0): may be expected — empty dataset (user hasn't created cases yet), missing judges (will be added later). Report them to the user but don't block.
+**Warnings** (exit code 0): may be expected — empty dataset (no cases yet), missing judges (added later). Report them to the user but don't block.
 
 ## Step 7: Generate eval.md
 
-The eval.md caches the skill analysis so it doesn't need to be repeated. Write it to `<eval_md_path>` (defined in Config Location Discovery). The hash tracks only the top-level SKILL.md — if sub-skills change, the user should run `/eval-analyze --update` to refresh. Compute the skill hash:
+eval.md caches the skill analysis so it doesn't need repeating. Write it to `<eval_md_path>` (defined in Config Location Discovery). The hash tracks only the top-level SKILL.md — if sub-skills change, the user should run `/eval-analyze --update` to refresh. Compute the skill hash:
 
 ```bash
 python3 -c "import hashlib; from pathlib import Path; print(hashlib.sha256(Path('<skill-path>/SKILL.md').read_bytes()).hexdigest()[:12])"
@@ -219,7 +219,7 @@ If validation produced warnings, list them so the user knows what's incomplete.
 
 ### Step 2-Prompt: Generate Eval Config from Analysis Prompt
 
-**Objective**: Generate `eval.yaml` using a custom analysis prompt that defines what to evaluate and how.
+**Objective**: Generate `eval.yaml` using a custom analysis prompt defining what to evaluate and how.
 
 This is for non-skill evaluations where you want to test agent capabilities directly:
 - **Skill eval**: "Does this skill produce the expected outputs?"
@@ -234,7 +234,7 @@ This is for non-skill evaluations where you want to test agent capabilities dire
 
 **Same config surface as skill mode.** A prompt-mode eval.yaml still needs `models`, `judges`, and
 `thresholds` — read `references/eval-yaml-template.md` and Step 6's field guidance (it applies to both
-modes) rather than re-deriving it. Two prompt-mode specifics that Step 6 flags but the analysis prompt
+modes) rather than re-deriving it. Two prompt-mode specifics Step 6 flags but the analysis prompt
 may not: set `runner.workspace_mode: repo` when the agent must navigate the real repo (docs/ai-docs
 navigation), and add `permissions.deny` for `eval/`, `eval.yaml`, `eval.md`, `tmp/` so the agent
 can't read the answer key (test-cheating guard — deny rules are prompt-mode only).
