@@ -90,6 +90,15 @@ Borderline: <excerpt near the boundary>
   — <one line: which side it lands on and the deciding property>
 ```
 
+## Stdout-only skills
+
+When a skill produces no file artifacts (`stdout_only: true` in the analysis),
+bare `{{ outputs }}` renders empty — there are no files to list. Any judge that
+would normally use bare `{{ outputs }}`, including builtins, must use
+`{{ conversation }}` instead. Inline `check` judges should use
+`outputs.get("conversation", "")`. Judges on other variables
+(`{{ tool_trace }}`, `{{ evidence }}`, etc.) are unaffected.
+
 ## Filling the example slots
 
 Real examples beat invented ones. Prior runs are the best source: look under
